@@ -4,15 +4,17 @@ handleDeviceOrientation = ({alpha, gamma, beta}) ->
   # beta: front back motion
   # Meteor.call('handleDeviceOrientation', {alpha, gamma, beta})
 
-handleDeviceMotion = ({accelerationIncludingGravity}) ->
+handleDeviceMotion = ({accelerationIncludingGravity, interval}) ->
   # Meteor.call('handleDeviceMotion', {accelerationIncludingGravity, rotationRate})
   value = _.reduce(_.values(accelerationIncludingGravity),
                     ((a, b) -> return a * Math.abs(b)), 1)
 
   window.text
+    .transition().duration(interval)
     .text(value)
 
   window.circle
+    .transition().duration(interval)
     .attr("r", value)
 
   console.log(value)
