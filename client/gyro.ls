@@ -1,65 +1,70 @@
+window.debug = true
+
 handleDeviceOrientation = ({alpha, gamma, beta}) ->
-  # Meteor.call('handleDeviceOrientation', {alpha, beta, gamma})
+  # for server side handling of deviceorientation
+  Meteor.call('handleDeviceOrientation', {alpha, beta, gamma})
 
   # alpha: rotation around z-axis
   # beta: front back motion
   # gamma: left to right
-  
-  window.svg.select('.alpha')
-    .transition()
-    .text("alpha: " + alpha)
 
-  window.svg.select('.beta')
-    .transition()
-    .text("beta: " + beta)
+  if window.debug
+    # use jQuery to show orientation data
+    $('.alphaPos').html("alpha position: " + alpha)
+    $('.betaPos').html("beta position: " + beta)
+    $('.gammaPos').html("gamma position: " + gamma)
 
-  window.svg.select('.gamma')
-    .transition()
-    .text("gamma: " + gamma)
+  # use jQuery for auto prefixing of css3 transforms
+  $('.display').css("transform",
+    #"rotateZ(" + ( alpha - 180 ) + "deg)" +
+    "rotateX(" + ( -beta ) + "deg)" +
+    "rotateY(" + ( -gamma ) + "deg)"
+  )
 
-
-handleDeviceMotion = ({accelerationIncludingGravity, interval}) ->
+handleDeviceMotion = ({accelerationIncludingGravity, interval, rotationRate}) ->
 
   # for server side handling of devicemotion
-  # Meteor.call('handleDeviceMotion', {accelerationIncludingGravity, rotationRate})
+  Meteor.call('handleDeviceMotion', {accelerationIncludingGravity, rotationRate})
 
   a = accelerationIncludingGravity
   # a.x runs side-to-side across the mobile phone screen, or the laptop keyboard and is positive towards the right side
   # a.y runs front-to-back across the mobile phone screen or the laptop keyboard and is positive towards as it moves away from you
   # a.z comes straight up out of the mobile phone screen or the laptop keyboard and is positive as it moves up
 
-  window.svg.select('.x')
+  r = rotationRate
+  # TODO add description of rotation rate
+
+  if window.debug
+    # use jQuery to show motion data
+    $('.xAccel').html("x acceleration: " + a.x)
+    $('.yAccel').html("y acceleration: " + a.y)
+    $('.zAccel').html("z acceleration: " + a.z)
+    $('.alphaRot').html("alpha rotation: " + r.alpha)
+    $('.betaRot').html("beta rotation: " + r.beta)
+    $('.gammaRot').html("gamma rotation: " + r.gamma)
+
+  #value = _.reduce(_.map(_.values(a), Math.abs), ((a, b) -> return a * b), 1)
+  value = _.reduce(_.map(_.values(a), Math.abs), ((a, b) -> return a + b), 0)
+  # account for gravity
+  value -= 9.81
+  # make more pronounced
+  value = Math.pow(value, 3)
+  # cap at 0
+  value = (if (value < 0) then 0 else value)
+
+  gyro = d3.select('.gyro')
     .transition().duration(interval)
-    .text("x acceleration: " + a.x)
-
-  window.svg.select('.y')
-    .transition().duration(interval)
-    .text("y acceleration: " + a.y)
-
-  window.svg.select('.z')
-    .transition().duration(interval)
-    .text("z acceleration: " + a.z)
-
-  value = _.reduce(_.map(_.values(a), Math.abs), ((a, b) -> return a * b), 1)
-
-  window.svg.select('circle')
-    .transition().duration(interval)
-    .attr("r", value)
-
-  console.log(value)
+    .style('background-size', value + ' ' + value)
 
 handleResize = ->
-  console.log(window.innerWidth, window.innerHeight)
-  window.svg
-    .attr("width", window.innerWidth)
-    .attr("height", window.innerHeight)
 
-  window.svg.selectAll('text')
-    .attr("x", -> return window.innerWidth / 2.0)
+  # use jQuery for auto prefixing
+  $('.gyro').css('perspective', Math.max(window.innerWidth, window.innerHeight)*2)
 
-  window.svg.select('circle')
-    .attr("cx", -> return window.innerWidth / 2.0)
-    .attr("cy", -> return window.innerHeight / 2.0)
+  if window.debug
+    # use jQuery to show resize data
+    $('.screenW').html("screen width: " + window.innerWidth)
+    $('.screenH').html("screen height: " + window.innerHeight)
 
 Template.gyro.created = ->
   if window.DeviceOrientationEvent
@@ -74,44 +79,13 @@ Template.gyro.created = ->
 
   window.addEventListener("resize", handleResize, true)
 
-  window.svg = d3.select('body').append('svg')
-
-  window.svg.append('text')
-    .attr('text-anchor', 'middle')
-    .attr("y", 20)
-    .attr('class', 'x')
-
-  window.svg.append('text')
-    .attr('text-anchor', 'middle')
-    .attr("y", 40)
-    .attr('class', 'y')
-
-  window.svg.append('text')
-    .attr('text-anchor', 'middle')
-    .attr("y", 60)
-    .attr('class', 'z')
-
-  window.svg.append('text')
-    .attr('text-anchor', 'middle')
-    .attr("y", 80)
-    .attr('class', 'alpha')
-
-  window.svg.append('text')
-    .attr('text-anchor', 'middle')
-    .attr("y", 100)
-    .attr('class', 'beta')
-
-  window.svg.append('text')
-    .attr('text-anchor', 'middle')
-    .attr("y", 120)
-    .attr('class', 'gamma')
-
-  window.svg.append('circle')
-
+Template.gyro.rendered = ->
   handleResize!
+  handleDeviceOrientation({alpha: 0, beta: 0, gamma: 0})
+  handleDeviceMotion({accelerationIncludingGravity: { x: 0, y: 0, z: -9.81 }})
 
-  stub = { accelerationIncludingGravity: { x: 4, y: 4, z: 4 }}
-  handleDeviceMotion(stub)
+  if not window.debug
+    $('.data').css('display', 'none')
 
 Template.gyro.destroyed = ->
   window.removeEventListener("deviceorientation", handleDeviceOrientation, true)
