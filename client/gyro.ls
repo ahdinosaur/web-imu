@@ -1,60 +1,89 @@
 window.debug = true
 
-handleDeviceOrientation = ({alpha, gamma, beta}) ->
-  # for server side handling of deviceorientation
-  Meteor.call('handleDeviceOrientation', {alpha, beta, gamma})
+class IMU
+  (@frequency=100) ->
+    @orientation = {
+      alpha: null, # rotation around z-axis
+      beta: null, # front back motion
+      gamma: null, # left to right
+    }
 
-  # alpha: rotation around z-axis
-  # beta: front back motion
-  # gamma: left to right
+    @motion = {
+      x: null, # runs side-to-side across the mobile phone screen, or the laptop keyboard and is positive towards the right side
+      y: null, # runs front-to-back across the mobile phone screen or the laptop keyboard and is positive towards as it moves away from you
+      z: null, # comes straight up out of the mobile phone screen or the laptop keyboard and is positive as it moves up
+      alpha: null,
+      beta: null,
+      gamma: null,
+    }
 
-  if window.debug
-    # use jQuery to show orientation data
-    $('.alphaPos').html("alpha position: " + alpha)
-    $('.betaPos').html("beta position: " + beta)
-    $('.gammaPos').html("gamma position: " + gamma)
+  handleDeviceOrientation: ({alpha, beta, gamma}) ~>
+    @orientation.alpha = alpha
+    @orientation.beta = beta
+    @orientation.gamma = gamma
 
-  # use jQuery for auto prefixing of css3 transforms
-  $('.display').css("transform",
-    #"rotateZ(" + ( alpha - 180 ) + "deg)" +
-    "rotateX(" + ( -beta ) + "deg)" +
-    "rotateY(" + ( -gamma ) + "deg)"
-  )
+  handleDeviceMotion: ({accelerationIncludingGravity, interval, rotationRate}) ~>
+    @motion.x = accelerationIncludingGravity.x
+    @motion.y = accelerationIncludingGravity.y
+    @motion.z = accelerationIncludingGravity.z
+    @motion.alpha = rotationRate.alpha
+    @motion.beta = rotationRate.beta
+    @motion.gamma = rotationRate.gamma
 
-handleDeviceMotion = ({accelerationIncludingGravity, interval, rotationRate}) ->
+  create: ->
+    if window.DeviceOrientationEvent
+      window.addEventListener("deviceorientation", @handleDeviceOrientation, true)
+    else
+      console.error("deviceorientation not supported!")
 
-  # for server side handling of devicemotion
-  Meteor.call('handleDeviceMotion', {accelerationIncludingGravity, rotationRate})
+    if window.DeviceMotionEvent
+      window.addEventListener("devicemotion", @handleDeviceMotion, true)
+    else
+      console.error("devicemotion not supported!")
 
-  a = accelerationIncludingGravity
-  # a.x runs side-to-side across the mobile phone screen, or the laptop keyboard and is positive towards the right side
-  # a.y runs front-to-back across the mobile phone screen or the laptop keyboard and is positive towards as it moves away from you
-  # a.z comes straight up out of the mobile phone screen or the laptop keyboard and is positive as it moves up
+    window.addEventListener("resize", @handleResize, true)
 
-  r = rotationRate
-  # TODO add description of rotation rate
+  destroy: ->
+    window.removeEventListener("deviceorientation", @handleDeviceOrientation, true)
+    window.removeEventListener("devicemotion", @handleDeviceMotion, true)
+    window.removeEventListener("resize", @handleResize, true)
 
-  if window.debug
-    # use jQuery to show motion data
-    $('.xAccel').html("x acceleration: " + a.x)
-    $('.yAccel').html("y acceleration: " + a.y)
-    $('.zAccel').html("z acceleration: " + a.z)
-    $('.alphaRot').html("alpha rotation: " + r.alpha)
-    $('.betaRot').html("beta rotation: " + r.beta)
-    $('.gammaRot').html("gamma rotation: " + r.gamma)
+  render: ->
+    # if in debug mode, show raw data
+    if window.debug
+      $('.alphaPos').html("alpha position: " + @orientation.alpha)
+      $('.betaPos').html("beta position: " + @orientation.beta)
+      $('.gammaPos').html("gamma position: " + @orientation.gamma)
+      $('.xAccel').html("x acceleration: " + @motion.x)
+      $('.yAccel').html("y acceleration: " + @motion.y)
+      $('.zAccel').html("z acceleration: " + @motion.z)
+      $('.alphaRot').html("alpha rotation: " + @motion.alpha)
+      $('.betaRot').html("beta rotation: " + @motion.beta)
+      $('.gammaRot').html("gamma rotation: " + @motion.gamma)
 
-  #value = _.reduce(_.map(_.values(a), Math.abs), ((a, b) -> return a * b), 1)
-  value = _.reduce(_.map(_.values(a), Math.abs), ((a, b) -> return a + b), 0)
-  # account for gravity
-  value -= 9.81
-  # make more pronounced
-  value = Math.pow(value, 3)
-  # cap at 0
-  value = (if (value < 0) then 0 else value)
+    # absolute value of each x, y, z value multiplied by each other
+    #value = _.reduce(_.map(_.values(a), Math.abs), ((a, b) -> return a * b), 1)
+    # absolute value of each x, y, z value added to each other
+    a = [@motion.x, @motion.y, @motion.z]
+    value = _.reduce(_.map(a, Math.abs), ((a, b) -> return a + b), 0)
+    # account for gravity
+    value -= 9.81
+    # cap at 0
+    value = (if (value < 0) then 0 else value)
+    # make more pronounced
+    value = Math.pow(value, 3)
 
-  gyro = d3.select('.gyro')
-    .transition().duration(interval)
-    .style('background-size', value + ' ' + value)
+    gyro = d3.select('.gyro')
+      .transition().duration(@frequency)
+      .style('background-size', value + ' ' + value)
+
+  start: ->
+    self = this
+    @animation = setInterval((->
+      self.render!
+    ), @frequency)
+
+imu = new IMU()
 
 handleResize = ->
 
@@ -67,28 +96,14 @@ handleResize = ->
     $('.screenH').html("screen height: " + window.innerHeight)
 
 Template.gyro.created = ->
-  if window.DeviceOrientationEvent
-    window.addEventListener("deviceorientation", handleDeviceOrientation, true)
-  else
-    console.error("deviceorientation not supported!")
-
-  if window.DeviceMotionEvent
-    window.addEventListener("devicemotion", handleDeviceMotion, true)
-  else
-    console.error("devicemotion not supported!")
-
-  window.addEventListener("resize", handleResize, true)
+  imu.create!
 
 Template.gyro.rendered = ->
   handleResize!
-  handleDeviceOrientation({alpha: 0, beta: 0, gamma: 0})
-  handleDeviceMotion({accelerationIncludingGravity: { x: 0, y: 0, z: -9.81 }})
+  imu.start!
 
   if not window.debug
     $('.data').css('display', 'none')
 
 Template.gyro.destroyed = ->
-  window.removeEventListener("deviceorientation", handleDeviceOrientation, true)
-  window.removeEventListener("devicemotion", handleDeviceMotion, true)
-  window.removeEventListener("resize", handleResize, true)
-
+  imu.destroy!
