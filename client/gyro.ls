@@ -1,34 +1,38 @@
 window.debug = true
 
-class IMU
-  (@frequency=100) ->
+class @IMU
+  (@dt=100) ->
     @orientation = {
-      alpha: null, # rotation around z-axis
-      beta: null, # front back motion
-      gamma: null, # left to right
+      alpha: 0, # rotation around z-axis
+      beta: 0, # front back motion
+      gamma: 0, # left to right
     }
 
     @motion = {
-      x: null, # runs side-to-side across the mobile phone screen, or the laptop keyboard and is positive towards the right side
-      y: null, # runs front-to-back across the mobile phone screen or the laptop keyboard and is positive towards as it moves away from you
-      z: null, # comes straight up out of the mobile phone screen or the laptop keyboard and is positive as it moves up
-      alpha: null,
-      beta: null,
-      gamma: null,
+      x: 0, # runs side-to-side across the mobile phone screen, or the laptop keyboard and is positive towards the right side
+      y: 0, # runs front-to-back across the mobile phone screen or the laptop keyboard and is positive towards as it moves away from you
+      z: -9.81, # comes straight up out of the mobile phone screen or the laptop keyboard and is positive as it moves up
+      alpha: 0,
+      beta: 0,
+      gamma: 0,
     }
 
+    @alphaKalman = new Kalman()
+    @betaKalman = new Kalman()
+    @gammaKalman = new Kalman()
+
   handleDeviceOrientation: ({alpha, beta, gamma}) ~>
-    @orientation.alpha = alpha
-    @orientation.beta = beta
-    @orientation.gamma = gamma
+    @orientation.alpha = alpha || 0
+    @orientation.beta = beta || 0
+    @orientation.gamma = gamma || 0
 
   handleDeviceMotion: ({accelerationIncludingGravity, interval, rotationRate}) ~>
-    @motion.x = accelerationIncludingGravity.x
-    @motion.y = accelerationIncludingGravity.y
-    @motion.z = accelerationIncludingGravity.z
-    @motion.alpha = rotationRate.alpha
-    @motion.beta = rotationRate.beta
-    @motion.gamma = rotationRate.gamma
+    @motion.x = accelerationIncludingGravity.x || 0
+    @motion.y = accelerationIncludingGravity.y || 0
+    @motion.z = accelerationIncludingGravity.z || 0
+    @motion.alpha = rotationRate.alpha || 0
+    @motion.beta = rotationRate.beta || 0
+    @motion.gamma = rotationRate.gamma || 0
 
   create: ->
     if window.DeviceOrientationEvent
@@ -48,18 +52,35 @@ class IMU
     window.removeEventListener("devicemotion", @handleDeviceMotion, true)
     window.removeEventListener("resize", @handleResize, true)
 
-  render: ->
+  tick: ->
+
+    @alphaKalman.compute(@orientation.alpha, @motion.alpha, @dt)
+    @betaKalman.compute(@orientation.beta, @motion.beta, @dt)
+    @gammaKalman.compute(@orientation.gamma, @motion.gamma, @dt)
+
+    orientation = {
+      alpha: @alphaKalman.angle
+      beta:  @betaKalman.angle
+      gamma: @gammaKalman.angle
+    }
+
+    motion = {
+      alpha: @alphaKalman.rate
+      beta:  @betaKalman.rate
+      gamma: @gammaKalman.rate
+    }
+
     # if in debug mode, show raw data
     if window.debug
-      $('.alphaPos').html("alpha position: " + @orientation.alpha)
-      $('.betaPos').html("beta position: " + @orientation.beta)
-      $('.gammaPos').html("gamma position: " + @orientation.gamma)
       $('.xAccel').html("x acceleration: " + @motion.x)
       $('.yAccel').html("y acceleration: " + @motion.y)
       $('.zAccel').html("z acceleration: " + @motion.z)
-      $('.alphaRot').html("alpha rotation: " + @motion.alpha)
-      $('.betaRot').html("beta rotation: " + @motion.beta)
-      $('.gammaRot').html("gamma rotation: " + @motion.gamma)
+      $('.alphaPos').html("alpha position: " + orientation.alpha)
+      $('.betaPos').html("beta position: " + orientation.beta)
+      $('.gammaPos').html("gamma position: " + orientation.gamma)
+      $('.alphaRot').html("alpha rotation: " + motion.alpha)
+      $('.betaRot').html("beta rotation: " + motion.beta)
+      $('.gammaRot').html("gamma rotation: " + motion.gamma)
 
     # absolute value of each x, y, z value multiplied by each other
     #value = _.reduce(_.map(_.values(a), Math.abs), ((a, b) -> return a * b), 1)
@@ -74,14 +95,14 @@ class IMU
     value = Math.pow(value, 3)
 
     gyro = d3.select('.gyro')
-      .transition().duration(@frequency)
+      .transition().duration(@dt)
       .style('background-size', value + ' ' + value)
 
   start: ->
     self = this
     @animation = setInterval((->
-      self.render!
-    ), @frequency)
+      self.tick!
+    ), @dt)
 
 imu = new IMU()
 
